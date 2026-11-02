@@ -6,3 +6,6 @@ DerivedData/
 .swiftpm/
 JobScanCore/.build/
 JobScanCore/.swiftpm/
+
+# Personal go-live checklist (not part of the app)
+golive-todo.md
