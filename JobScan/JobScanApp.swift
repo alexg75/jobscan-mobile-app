@@ -10,7 +10,7 @@ struct JobScanApp: App {
                 .environment(AppModel.shared)
         }
         .onChange(of: scenePhase) { _, phase in
-            // Pick up changes made in the Files app (reports, config.toml).
+            // Pick up reports added or removed in the Files app, and re-read the settings.
             if phase == .active {
                 AppModel.shared.reloadReports()
                 AppModel.shared.reloadConfig()

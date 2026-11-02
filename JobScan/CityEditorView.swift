@@ -124,7 +124,7 @@ struct CityEditorView: View {
 
     private func runTest() async {
         test = .running
-        let scanner = SiteScanner(client: RetryingHTTPClient(base: URLSessionHTTPClient(), retries: 1))
+        let scanner = SiteScanner(client: RetryingHTTPClient(base: URLSessionHTTPClient(), delays: [1]))
         do {
             let result = try await scanner.probe(config: config, search: search.normalized(), today: Day(Date()))
             if result.found == 0 {

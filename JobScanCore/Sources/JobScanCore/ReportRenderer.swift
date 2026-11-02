@@ -16,6 +16,12 @@ public enum ReportRenderer {
 
     static func total(_ results: [CityResult]) -> Int { results.reduce(0) { $0 + $1.jobs.count } }
 
+    /// "2 matches", or the error (e.g. "BAD REQUEST") when the city couldn't be searched.
+    static func status(_ city: CityResult) -> String {
+        if city.error != nil { return city.errorLabel ?? "ERROR" }
+        return "\(city.jobs.count) \(matches(city.jobs.count))"
+    }
+
     // MARK: Plain text
 
     public static func text(results: [CityResult], config: ScanConfig, now: Date, cutoff: Day,
@@ -31,8 +37,8 @@ public enum ReportRenderer {
             "",
         ]
         for city in results {
-            out.append("== \(city.name) - \(city.jobs.count) \(matches(city.jobs.count)) ==")
-            if let error = city.error { out.append("   ERROR: \(error)") }
+            out.append("== \(city.name) - \(status(city)) ==")
+            if let error = city.error { out.append(city.wasStopped ? "   \(error)" : "   ERROR: \(error)") }
             for j in city.jobs {
                 out.append("* \(j.title)")
                 let details = [j.company.isEmpty ? "" : "Company: \(j.company)",
@@ -65,9 +71,11 @@ public enum ReportRenderer {
         meta += " · **\(n) matches**"
         var out = ["# Job scan - \(timestamp(now, calendar: calendar))", "", meta, ""]
         for city in results {
-            out.append("## \(city.name) - \(city.jobs.count) \(matches(city.jobs.count))")
+            out.append("## \(city.name) - \(status(city))")
             out.append("")
-            if let error = city.error { out += ["> ⚠️ Error: \(mdCell(error))", ""] }
+            if let error = city.error {
+                out += [city.wasStopped ? "> \(mdCell(error))" : "> ⚠️ Error: \(mdCell(error))", ""]
+            }
             if !city.jobs.isEmpty {
                 out += ["| Title | Company | Location | Posted |",
                         "| ----- | ------- | -------- | ------ |"]
@@ -143,8 +151,11 @@ public enum ReportRenderer {
                    "<title>Job scan \(Day(now, calendar: calendar))</title>", "<style>\(style)</style>", "</head>",
                    "<body><main>", "<h1>Job scan - \(stamp)</h1>", "<p class=\"meta\">\(meta)</p>"]
         for city in results {
-            out.append("<h2>\(e(city.name)) <span class=\"count\">\(city.jobs.count) \(matches(city.jobs.count))</span></h2>")
-            if let error = city.error { out.append("<p class=\"error\">Error: \(e(error))</p>") }
+            let countClass = city.error == nil ? "count" : "count error"
+            out.append("<h2>\(e(city.name)) <span class=\"\(countClass)\">\(e(status(city)))</span></h2>")
+            if let error = city.error {
+                out.append(city.wasStopped ? "<p class=\"none\">\(e(error))</p>" : "<p class=\"error\">Error: \(e(error))</p>")
+            }
             if !city.jobs.isEmpty {
                 out.append("<div class=\"wrap\"><table><thead><tr><th>Title</th><th>Company</th>"
                            + "<th>Location</th><th>Posted</th></tr></thead><tbody>")

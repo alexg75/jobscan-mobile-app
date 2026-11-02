@@ -1,4 +1,17 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
+/// Thrown when the scan is stopped while searching a city; carries the jobs found so far.
+public struct ScanStopped: Error {
+    public let jobs: [Job]
+}
+
+/// True for the errors a stopped (cancelled) task produces.
+func isCancellation(_ error: Error) -> Bool {
+    error is CancellationError || error is ScanStopped || (error as? URLError)?.code == .cancelled || Task.isCancelled
+}
 
 /// Fetches the result pages for one city. Port of `search_url` and `scan_search`.
 public struct SiteScanner: Sendable {
@@ -56,11 +69,6 @@ public struct SiteScanner: Sendable {
         return url
     }
 
-    /// `{'format': 'markdown', 'page': '2'}` for the log.
-    static func describe(_ params: [QueryParam]) -> String {
-        "{" + params.map { "'\($0.name)': '\($0.value)'" }.joined(separator: ", ") + "}"
-    }
-
     /// All jobs on up to `maxPages` result pages for one city (unfiltered).
     public func scanSearch(config: ScanConfig, search: SearchTarget, today: Day) async throws -> [Job] {
         let base = Self.searchURL(site: search.site, location: search.location, query: config.query)
@@ -71,13 +79,23 @@ public struct SiteScanner: Sendable {
         var jobs: [Job] = []
         var page = 1
         while page <= config.maxPages {
+            if Task.isCancelled { throw ScanStopped(jobs: jobs) }
             var pageParams = params
             if page > 1 { Self.upsert(&pageParams, QueryParam(name: "page", value: String(page))) }
-            log?.info("GET \(base) \(Self.describe(pageParams))")
+            let url = try Self.makeURL(base, pageParams)
+            log?.info("GET \(url.absoluteString)")
 
-            let response = try await client.get(try Self.makeURL(base, pageParams), timeout: 30)
+            let response: HTTPResponse
+            do {
+                response = try await client.get(url, timeout: URLSessionHTTPClient.requestTimeout)
+            } catch {
+                if isCancellation(error) { throw ScanStopped(jobs: jobs) }  // keep what earlier pages found
+                throw error
+            }
+            // A page that still fails after its retries ends this city's search:
+            // no further pages are requested (page 1 failing means no page 2 or 3).
             guard response.statusCode < 400 else {
-                throw HTTPStatusError(statusCode: response.statusCode, url: base)
+                throw HTTPStatusError(statusCode: response.statusCode, url: url.absoluteString)
             }
 
             // Links can come back relative ("/clickout/..."): make them absolute so they open anywhere.
@@ -94,7 +112,11 @@ public struct SiteScanner: Sendable {
             if pageJobs.isEmpty || !ResultsParser.hasNextPage(response.body, page: page) { break }
             if config.resultsSortedByDate && pageJobs.allSatisfy({ $0.posted < cutoff }) { break }
             if page == config.maxPages { break }
-            try await sleep(config.requestDelaySeconds)
+            do {
+                try await sleep(config.requestDelaySeconds)
+            } catch {
+                throw ScanStopped(jobs: jobs)
+            }
             page += 1
         }
         return jobs

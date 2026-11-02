@@ -4,17 +4,24 @@ A Swift/SwiftUI iPhone and iPad app that scans the englishjobs.* job sites for
 roles matching your search, with no server: the phone itself fetches the result
 pages, filters them and keeps the reports.
 
-- **Home screen:** **RUN A SEARCH**, a spinner while it runs, the result, and the
-  last 10 reports (swipe to delete)
+- **Home screen:** **RUN A SEARCH**; while it runs, the city being searched, how many
+  cities are done (e.g. 2/5) and a **STOP** button, which ends the search and saves a
+  report with the results so far; then the result, and the last 10 reports (swipe
+  to delete)
 - **Reports:** one per day (`jobs-YYYY-MM-DD.html`, optionally `.md` and `.txt`),
   shown in the app; job links open in Safari; Share button; old reports are
   deleted after `keep_reports_days`
 - **Scanning:** for each city, up to `max_pages` result pages, waiting
-  `request_delay_seconds` between requests, retrying busy servers (429/5xx), and
-  stopping early once results are older than `max_age_days`. Jobs are kept when
+  `request_delay_seconds` between requests, and stopping early once results are
+  older than `max_age_days`. Busy servers (429/5xx) and network errors are retried
+  after 1, 2 and 3 seconds; a page that still fails ends that city's search (no
+  further pages), and the report shows the error in place of the match count. A
+  request gives up after 20 seconds, and if a site can't be reached its other cities
+  are skipped. Jobs are kept when
   a word in the title starts with one of the keywords
-- **Settings:** stored in `config.toml`, editable in the app or the Files app
-- **Files:** reports, `config.toml` and `jobscan.log` are in the app's folder in
+- **Settings:** stored in a database on the phone, editable in the app; import and
+  export as `config.toml`
+- **Files:** reports and `jobscan.log` are in the app's folder in
   the Files app (On My iPhone › Job Scan); the log is also under Settings › Scan log
 
 ## Requirements
@@ -64,14 +71,14 @@ Or open `JobScanCore/Package.swift` in Xcode and press ⌘U.
 
 ## Changing what it searches
 
-The settings live in **`config.toml`** in the app's folder (Files app › On My
-iPhone › Job Scan). On first launch the app copies in the `config.toml` it ships
-with (`JobScan/config.toml`).
+The settings are stored in a **SwiftData database on the phone** (no server). On the
+very first launch the database is filled from the `config.toml` the app ships with
+(`JobScan/config.toml`); after that the file isn't used, so editing it only affects
+new installs.
 
 **In the app:** Settings › **Edit Settings**. You edit a copy: nothing changes
 until you tap **Save**, and Save stays disabled until every setting is valid
-(problems are shown in red under the section). Saving rewrites `config.toml`,
-with the usual comments; the next scan uses it.
+(problems are shown in red under the section). The next scan uses the new settings.
 
 - **Search for**, **title keywords**, **posted** (today, today or yesterday, …),
   **extra languages**
@@ -82,15 +89,20 @@ with the usual comments; the next scan uses it.
 - **Advanced**: pages per city, wait between requests (at least 1 s), stopping at
   old results, extra query parameters
 
-**By hand:** edit `config.toml` in the Files app, or replace it with another copy
-(AirDrop, iCloud Drive…). The app re-reads it whenever it comes to the foreground.
-If the file has a mistake, the app says which line, uses the default settings
-meanwhile, and leaves your file untouched so you can fix it. Settings the app
+**config.toml files:** Settings › **Export config.toml** shares the current settings
+as a file (to back them up or edit them elsewhere); **Import config.toml** reads one
+from the Files app, checks it, and replaces the current settings. Settings the app
 doesn't know are ignored.
 
-**Sharing:** Settings › **Share config.toml**.
+**Erase Settings Database** (at the bottom of Settings › Edit Settings, after a
+confirmation) deletes everything in the settings database. The settings are then
+empty (no search text, keywords, languages or cities; the defaults are *not* brought
+back) and RUN A SEARCH is disabled until you enter new settings and Save.
 
-**Reset to Defaults** puts back the `config.toml` that came with the app.
+**Upgrading:** on its first launch this version imports the `config.toml` the app
+kept in its folder until now (instead of the bundled one), and renames the file
+`config.imported.toml`. If the database can't be opened, the app keeps its settings
+in `config.toml` instead and says so in Settings.
 
 ## Layout
 
@@ -104,10 +116,10 @@ jobscan-mobile-app/
     AppModel.swift            run state, report list
     HomeView.swift            RUN A SEARCH + last 10 searches
     ReportView.swift          report viewer and sharing
-    SettingsView.swift        search settings summary, edit/reset, log
-    ConfigEditorView.swift    settings editor (draft, Save/Cancel, inline problems)
+    SettingsView.swift        search settings summary, edit, import/export, log
+    ConfigEditorView.swift    settings editor (draft, Save/Cancel, inline problems, erase database)
     CityEditorView.swift      one city: name, site, location, "Test this city"
-    config.toml               the default settings, copied to Documents on first launch
+    config.toml               the default settings
   JobScanCore/              Swift package: all the scanning logic
     Sources/JobScanCore/
       ResultsParser.swift       results pages: dates, job blocks, next page, keyword filter
@@ -115,8 +127,10 @@ jobscan-mobile-app/
       ScanRunner.swift          a full scan: every city, reports, pruning
       ReportRenderer.swift      HTML, Markdown and text reports
       ReportStore.swift         report files, last 10, deleting old ones
-      HTTP.swift                URLSession client with retries
-      ScanConfig.swift, TOML.swift   config.toml reading and the settings file (ConfigStore)
+      HTTP.swift                URLSession client with time limits, retries, error labels
+      SettingsStore.swift       where settings are kept (database, or config.toml as fallback)
+      SettingsDatabase.swift    the SwiftData settings database
+      ScanConfig.swift, TOML.swift   settings type, config.toml reading, ConfigStore
       TOMLWriter.swift          writes settings back as config.toml
       ConfigValidation.swift    normalized() and validate() for the editor
       ScanLog.swift, Day.swift, Regex.swift, Job.swift

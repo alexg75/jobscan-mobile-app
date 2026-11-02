@@ -11,6 +11,9 @@ struct HomeView: View {
         NavigationStack {
             List {
                 runSection
+                if model.isRunning {
+                    progressSection
+                }
                 reportsSection
                 if let problem = model.configProblem {
                     Section {
@@ -55,23 +58,67 @@ struct HomeView: View {
                     .padding(.vertical, 6)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(model.isRunning)
+            .disabled(model.isRunning || !model.canScan)
             .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
 
-            if model.isRunning {
-                HStack(spacing: 10) {
-                    ProgressView()
-                    Text("Searching… this usually takes under a minute.")
-                        .foregroundStyle(.secondary)
+            if !model.isRunning && !model.canScan {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(model.config.isUnset
+                         ? "There's nothing to search for yet: add the search text, title keywords and cities."
+                         : "The settings are incomplete, so there's nothing to search yet.")
+                    Button("Open Settings") { showSettings = true }
+                        .fontWeight(.semibold)
                 }
-                .accessibilityElement(children: .combine)
-            } else if let last = model.lastRun {
+                .foregroundStyle(.secondary)
+            } else if !model.isRunning, let last = model.lastRun {
                 ResultMessage(last: last)
             }
         } header: {
             Text(model.subtitle)
                 .textCase(nil)
         }
+    }
+
+    /// While a scan runs: the city being searched and how many cities are done, e.g. 2/5.
+    private var progressSection: some View {
+        let completed = model.progress?.completed ?? 0
+        let total = model.progress?.total ?? model.config.searches.count
+        return Section {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text(Self.progressText(model.progress, stopping: model.isStopping))
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                ProgressView(value: Double(completed), total: Double(max(total, 1)))
+                Text("\(completed)/\(total) cities scanned")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .padding(.vertical, 4)
+            Button(role: .destructive) {
+                model.stopScan()
+            } label: {
+                Label(model.isStopping ? "Stopping…" : "STOP", systemImage: "stop.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.isStopping)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
+        } header: {
+            Text("Scanning")
+        } footer: {
+            Text("Stop ends the search now and saves a report with what has been found so far.")
+        }
+    }
+
+    static func progressText(_ progress: ScanProgress?, stopping: Bool = false) -> String {
+        if stopping { return "Stopping and saving the results so far…" }
+        guard let progress else { return "Starting…" }
+        if let city = progress.currentCity { return "Scanning \(city)…" }
+        return progress.completed >= progress.total ? "Writing the report…" : "Starting…"
     }
 
     private var reportsSection: some View {
@@ -100,7 +147,9 @@ private struct ResultMessage: View {
     var body: some View {
         let time = last.finishedAt.formatted(date: .omitted, time: .shortened)
         VStack(alignment: .leading, spacing: 6) {
-            if last.ok {
+            if last.stopped {
+                Text("Search stopped at \(time). The results so far are available: \(last.message).")
+            } else if last.ok {
                 Text("Search finished at \(time). A new result is available: \(last.message).")
             } else {
                 Text("The search finished with a problem: \(last.message).")
@@ -112,8 +161,13 @@ private struct ResultMessage: View {
                 }
             }
         }
-        .foregroundStyle(last.ok ? Color.green : Color.red)
-        .listRowBackground((last.ok ? Color.green : Color.red).opacity(0.12))
+        .foregroundStyle(color)
+        .listRowBackground(color.opacity(0.12))
+    }
+
+    private var color: Color {
+        if last.stopped { return .orange }
+        return last.ok ? .green : .red
     }
 }
 

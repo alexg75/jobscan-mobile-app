@@ -32,6 +32,27 @@ public struct HTTPStatusError: Error, LocalizedError, Equatable {
     }
 }
 
+/// A short, upper-case description of a failed request, for report headings:
+/// "BAD REQUEST", "NOT FOUND", "TIMED OUT", "CONNECTION LOST"…
+public func errorLabel(for error: Error) -> String {
+    if let http = error as? HTTPStatusError {
+        return HTTPURLResponse.localizedString(forStatusCode: http.statusCode).uppercased()
+    }
+    if let urlError = error as? URLError {
+        switch urlError.code {
+        case .timedOut: return "TIMED OUT"
+        case .notConnectedToInternet: return "NO INTERNET CONNECTION"
+        case .networkConnectionLost: return "CONNECTION LOST"
+        case .cannotFindHost, .dnsLookupFailed: return "SITE NOT FOUND"
+        case .cannotConnectToHost: return "CANNOT CONNECT"
+        case .secureConnectionFailed: return "SECURE CONNECTION FAILED"
+        case .badURL, .unsupportedURL: return "BAD ADDRESS"
+        default: return "NETWORK ERROR"
+        }
+    }
+    return "ERROR"
+}
+
 /// Waits for the given number of seconds (injectable so tests don't wait).
 public typealias Sleeper = @Sendable (Double) async throws -> Void
 
@@ -43,9 +64,25 @@ public let taskSleep: Sleeper = { seconds in
 public struct URLSessionHTTPClient: HTTPClient {
     public static let userAgent = "jobscan/1.0 (personal daily job alert; one run per day)"
 
+    /// No request may hang: 15 s without any data, or 20 s in total, and it fails.
+    public static let requestTimeout: TimeInterval = 15
+    public static let totalTimeout: TimeInterval = 20
+
+    /// A session with those limits, no caching and no waiting for a connection to appear.
+    public static let defaultSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = requestTimeout
+        configuration.timeoutIntervalForResource = totalTimeout
+        #if !canImport(FoundationNetworking)
+        configuration.waitsForConnectivity = false  // fail at once when offline
+        #endif
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }()
+
     let session: URLSession
 
-    public init(session: URLSession = .shared) {
+    public init(session: URLSession = URLSessionHTTPClient.defaultSession) {
         self.session = session
     }
 
@@ -79,20 +116,26 @@ public struct URLSessionHTTPClient: HTTPClient {
     }
 }
 
-/// Retries busy/failed requests: up to 3 retries on 429/5xx or network errors,
-/// waiting 5s, 10s, 20s (or the server's Retry-After).
+/// Retries a failed request after 1, 2 and 3 seconds: busy servers (429, 500, 502, 503,
+/// 504) and network errors (dropped connection, timeout…). Other errors, such as
+/// 400 Bad Request or 404 Not Found, are returned at once. If the last retry also fails,
+/// that failure is returned and the caller stops searching that city.
 public struct RetryingHTTPClient: HTTPClient {
-    let base: HTTPClient
-    let retries: Int
-    let backoffSeconds: Double
-    let sleep: Sleeper
+    public static let defaultDelays: [Double] = [1, 2, 3]
     static let retryStatuses: Set<Int> = [429, 500, 502, 503, 504]
 
-    public init(base: HTTPClient, retries: Int = 3, backoffSeconds: Double = 5, sleep: @escaping Sleeper = taskSleep) {
+    let base: HTTPClient
+    /// Wait before each retry, in seconds; one retry per entry.
+    let delays: [Double]
+    let sleep: Sleeper
+    let log: ScanLog?
+
+    public init(base: HTTPClient, delays: [Double] = RetryingHTTPClient.defaultDelays,
+                sleep: @escaping Sleeper = taskSleep, log: ScanLog? = nil) {
         self.base = base
-        self.retries = retries
-        self.backoffSeconds = backoffSeconds
+        self.delays = delays
         self.sleep = sleep
+        self.log = log
     }
 
     public func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPResponse {
@@ -100,23 +143,21 @@ public struct RetryingHTTPClient: HTTPClient {
         while true {
             do {
                 let response = try await base.get(url, timeout: timeout)
-                if Self.retryStatuses.contains(response.statusCode) && attempt < retries {
-                    attempt += 1
-                    try await sleep(delay(attempt: attempt, retryAfter: response.headers["retry-after"]))
-                    continue
+                guard Self.retryStatuses.contains(response.statusCode), attempt < delays.count else {
+                    return response
                 }
-                return response
-            } catch let error as URLError where error.code != .cancelled && attempt < retries {
-                attempt += 1
-                try await sleep(delay(attempt: attempt, retryAfter: nil))
+                try await wait(before: attempt, reason: "HTTP \(response.statusCode)")
+            } catch let error as URLError where error.code != .cancelled && attempt < delays.count {
+                try await wait(before: attempt, reason: error.localizedDescription)
             }
+            attempt += 1
         }
     }
 
-    func delay(attempt: Int, retryAfter: String?) -> Double {
-        if let text = retryAfter, let seconds = Double(text.trimmingCharacters(in: .whitespaces)) {
-            return min(max(seconds, 0), 120)
-        }
-        return backoffSeconds * pow(2, Double(attempt - 1))
+    private func wait(before attempt: Int, reason: String) async throws {
+        let seconds = delays[attempt]
+        let text = seconds == seconds.rounded() ? String(Int(seconds)) : String(seconds)
+        log?.info("  retry \(attempt + 1) of \(delays.count) in \(text) s (\(reason))")
+        try await sleep(seconds)
     }
 }

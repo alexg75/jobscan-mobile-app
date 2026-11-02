@@ -13,6 +13,8 @@ struct ConfigEditorView: View {
     @State private var showAdvanced = false
     @State private var confirmDiscard = false
     @State private var saveError: String?
+    @State private var confirmErase = false
+    @State private var eraseError: String?
 
     init(config: ScanConfig) {
         original = config.normalized()
@@ -35,6 +37,7 @@ struct ConfigEditorView: View {
                 citiesSection
                 reportsSection
                 advancedSection
+                eraseSection
             }
             .navigationTitle("Edit settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -194,6 +197,49 @@ struct ConfigEditorView: View {
             let problems = messages(.maxPages) + messages(.requestDelay) + messages(.extraParams)
             FieldFooter(help: showAdvanced ? "\"Stop at old results\" stops paging at the first page where every job is too old (needs sort = date, as results then come newest first). Extra parameters are added to every search address." : "",
                         problems: problems)
+        }
+    }
+
+    // MARK: Erase the database
+
+    private var eraseSection: some View {
+        Section {
+            Button(role: .destructive) {
+                confirmErase = true
+            } label: {
+                Label("Erase Settings Database", systemImage: "trash")
+            }
+            .disabled(!model.hasSavedSettings || model.isRunning)
+        } header: {
+            Text("Database")
+        } footer: {
+            Text(model.hasSavedSettings
+                 ? "Deletes everything saved in the app's settings database: the search text, title keywords, languages and cities are all cleared, and nothing can be searched until you enter new settings and Save."
+                 : "The settings database is empty. Enter your settings above and Save.")
+        }
+        .confirmationDialog("Erase the settings database?", isPresented: $confirmErase, titleVisibility: .visible) {
+            Button("Erase Database", role: .destructive) { erase() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All saved settings are deleted, including any changes on this screen, and the app starts from empty settings (not the defaults). This can't be undone; export config.toml first if you want a copy.")
+        }
+        .alert("Couldn't erase the database", isPresented: eraseErrorShown) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(eraseError ?? "")
+        }
+    }
+
+    private var eraseErrorShown: Binding<Bool> {
+        Binding(get: { eraseError != nil }, set: { if !$0 { eraseError = nil } })
+    }
+
+    private func erase() {
+        do {
+            try model.eraseSettings()
+            dismiss()  // the screen showed the old settings; Settings now shows them empty
+        } catch {
+            eraseError = error.localizedDescription
         }
     }
 

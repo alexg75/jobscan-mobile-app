@@ -29,6 +29,22 @@ final class FakeClient: HTTPClient, @unchecked Sendable {
 
 let noSleep: Sleeper = { _ in }
 
+/// Collects progress updates (they arrive on the main actor).
+@MainActor
+final class ProgressUpdates {
+    var all: [ScanProgress] = []
+}
+
+/// Records the waits instead of sleeping.
+final class Waits: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _seconds: [Double] = []
+    var seconds: [Double] { lock.lock(); defer { lock.unlock() }; return _seconds }
+    var sleeper: Sleeper {
+        { [self] s in lock.lock(); _seconds.append(s); lock.unlock() }
+    }
+}
+
 func utcCalendar() -> Calendar {
     var c = Calendar(identifier: .gregorian)
     c.timeZone = TimeZone(identifier: "UTC")!
@@ -102,12 +118,108 @@ final class ScanAndReportTests: XCTestCase {
         }
     }
 
-    func testRetryOnBusyServer() async throws {
+    func testBusyServerIsRetriedAfter1And2Seconds() async throws {
+        let waits = Waits()
         let client = FakeClient { n, _ in HTTPResponse(statusCode: n < 3 ? 503 : 200, body: "ok") }
-        let retrying = RetryingHTTPClient(base: client, sleep: noSleep)
-        let response = try await retrying.get(URL(string: "https://example.com")!, timeout: 1)
+        let response = try await RetryingHTTPClient(base: client, sleep: waits.sleeper)
+            .get(URL(string: "https://example.com")!, timeout: 1)
         XCTAssertEqual(response.statusCode, 200)
         XCTAssertEqual(client.calls.count, 3)
+        XCTAssertEqual(waits.seconds, [1, 2])
+    }
+
+    func testGivesUpAfterRetryingAfter1And2And3Seconds() async throws {
+        let waits = Waits()
+        let client = FakeClient { _, _ in HTTPResponse(statusCode: 503, body: "busy") }
+        let response = try await RetryingHTTPClient(base: client, sleep: waits.sleeper)
+            .get(URL(string: "https://example.com")!, timeout: 1)
+        XCTAssertEqual(response.statusCode, 503)
+        XCTAssertEqual(client.calls.count, 4)  // the request plus 3 retries
+        XCTAssertEqual(waits.seconds, [1, 2, 3])
+    }
+
+    func testNetworkErrorsAreRetriedButBadRequestsAreNot() async throws {
+        let lost = FakeClient { n, _ in
+            if n == 1 { throw URLError(.networkConnectionLost) }
+            return HTTPResponse(statusCode: 200, body: "ok")
+        }
+        _ = try await RetryingHTTPClient(base: lost, sleep: noSleep).get(URL(string: "https://example.com")!, timeout: 1)
+        XCTAssertEqual(lost.calls.count, 2)
+
+        let rejected = FakeClient { _, _ in HTTPResponse(statusCode: 400, body: "") }
+        let response = try await RetryingHTTPClient(base: rejected, sleep: noSleep).get(URL(string: "https://example.com")!, timeout: 1)
+        XCTAssertEqual(response.statusCode, 400)
+        XCTAssertEqual(rejected.calls.count, 1)
+    }
+
+    func testIfPage1FailsAllRetriesPages2And3AreNotRequested() async throws {
+        let site = FakeClient { _, _ in HTTPResponse(statusCode: 503, body: "busy") }
+        let cfg = config()
+        do {
+            _ = try await SiteScanner(client: RetryingHTTPClient(base: site, sleep: noSleep), sleep: noSleep)
+                .scanSearch(config: cfg, search: cfg.searches[1], today: today)
+            XCTFail("expected an error")
+        } catch let error as HTTPStatusError {
+            XCTAssertEqual(errorLabel(for: error), "SERVICE UNAVAILABLE")
+        }
+        XCTAssertEqual(site.calls.count, 4)
+        XCTAssertFalse(site.calls.contains { $0.absoluteString.contains("page=") })  // only page 1 was tried
+    }
+
+    func testIfPage2FailsAllRetriesPage3IsNotRequested() async throws {
+        // Page 1 is fine and says there's a next page; every later request is refused.
+        let site = FakeClient { n, _ in
+            n == 1 ? HTTPResponse(statusCode: 200, body: ParserTests.sample) : HTTPResponse(statusCode: 503, body: "busy")
+        }
+        let cfg = config { $0.resultsSortedByDate = false }
+        do {
+            _ = try await SiteScanner(client: RetryingHTTPClient(base: site, sleep: noSleep), sleep: noSleep)
+                .scanSearch(config: cfg, search: cfg.searches[1], today: today)
+            XCTFail("expected an error")
+        } catch is HTTPStatusError {}
+        XCTAssertEqual(site.calls.count, 1 + 4)
+        XCTAssertFalse(site.calls.contains { $0.absoluteString.contains("page=3") })
+    }
+
+    func testAnUnreachableSiteSkipsItsOtherCities() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // englishjobsearch.nl (The Hague and Amsterdam) times out; the other sites answer.
+        let client = FakeClient { _, url in
+            if url.host == "englishjobsearch.nl" { throw URLError(.timedOut) }
+            return HTTPResponse(statusCode: 200, body: "no jobs today")
+        }
+        let cfg = config()
+        let outcome = try await ScanRunner(config: cfg, client: client, store: ReportStore(directory: dir), sleep: noSleep,
+                                           calendar: utcCalendar(), now: { date(2026, 10, 27, 7, 13) }).run()
+
+        XCTAssertEqual(outcome.results.map(\.name), cfg.searches.map(\.name))
+        XCTAssertEqual(outcome.results[0].errorLabel, "TIMED OUT")   // The Hague: tried once
+        XCTAssertEqual(outcome.results[1].errorLabel, "TIMED OUT")   // Amsterdam: skipped
+        XCTAssertTrue(outcome.results[1].error?.hasPrefix("Not searched: englishjobsearch.nl") ?? false)
+        XCTAssertNil(outcome.results[2].error)                        // Stockholm still searched
+        XCTAssertEqual(client.calls.filter { $0.host == "englishjobsearch.nl" }.count, 1)
+        XCTAssertFalse(outcome.allFailed)
+    }
+
+    func testAPageErrorDoesNotSkipTheSitesOtherCities() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // The Hague's address is rejected, but the site itself is up.
+        let client = FakeClient { _, url in
+            url.path.contains("s-gravenhage") ? HTTPResponse(statusCode: 400, body: "")
+                                              : HTTPResponse(statusCode: 200, body: "no jobs today")
+        }
+        let outcome = try await ScanRunner(config: config(), client: client, store: ReportStore(directory: dir), sleep: noSleep,
+                                           calendar: utcCalendar(), now: { date(2026, 10, 27, 7, 13) }).run()
+        XCTAssertEqual(outcome.results[0].errorLabel, "BAD REQUEST")
+        XCTAssertNil(outcome.results[1].error)  // Amsterdam was still searched
+    }
+
+    func testRequestsHaveTimeLimits() {
+        let configuration = URLSessionHTTPClient.defaultSession.configuration
+        XCTAssertEqual(configuration.timeoutIntervalForRequest, 15)
+        XCTAssertEqual(configuration.timeoutIntervalForResource, 20)
     }
 
     func testReportMentionsErrorsAndEmpty() {
@@ -118,6 +230,8 @@ final class ScanAndReportTests: XCTestCase {
                                        calendar: utcCalendar())
         XCTAssertTrue(text.contains("No matching jobs."))
         XCTAssertTrue(text.contains("ERROR: timeout"))
+        XCTAssertTrue(text.contains("== Stockholm - ERROR =="))
+        XCTAssertTrue(text.contains("== Oslo - 0 matches =="))
         XCTAssertTrue(text.contains("Extra languages: italian"))
         XCTAssertTrue(text.hasPrefix("Job scan - 2026-10-27 07:00\n"))
     }
@@ -185,7 +299,137 @@ final class ScanAndReportTests: XCTestCase {
         XCTAssertEqual(reports[0].primaryFormat, .html)
         XCTAssertEqual(reports[0].files.count, 3)
         let txt = try String(contentsOf: store.fileURL(day: today, format: .txt), encoding: .utf8)
-        XCTAssertTrue(txt.contains("== Oslo (NO) - 0 matches ==\n   ERROR: 500 Server Error"))
+        XCTAssertTrue(txt.contains("== Oslo (NO) - INTERNAL SERVER ERROR ==\n   ERROR: 500 Server Error"))
+        let html = try String(contentsOf: store.fileURL(day: today, format: .html), encoding: .utf8)
+        XCTAssertTrue(html.contains("Oslo (NO) <span class=\"count error\">INTERNAL SERVER ERROR</span>"))
+    }
+
+    func testAnErrorStopsThatCitysSearchAndIsShownInsteadOfTheCount() async throws {
+        // Page 1 is fine and says there's a next page; page 2 is rejected.
+        let client = FakeClient { n, _ in
+            n == 1 ? HTTPResponse(statusCode: 200, body: ParserTests.sample)
+                   : HTTPResponse(statusCode: 400, body: "bad request")
+        }
+        let cfg = config()
+        do {
+            _ = try await SiteScanner(client: client, sleep: noSleep)
+                .scanSearch(config: cfg, search: cfg.searches[0], today: today)
+            XCTFail("expected an error")
+        } catch let error as HTTPStatusError {
+            XCTAssertEqual(error.statusCode, 400)
+            XCTAssertEqual(errorLabel(for: error), "BAD REQUEST")
+            // The message names the exact address requested, parameters included.
+            XCTAssertTrue(error.url.hasSuffix("?format=markdown&include=italian&sort=date&page=2"), error.url)
+        }
+        XCTAssertEqual(client.calls.count, 2)  // nothing after the failing page
+
+        let city = CityResult(name: "Luxembourg City (LU)", jobs: [], error: "400 Client Error", errorLabel: "BAD REQUEST")
+        let page = ReportRenderer.html(results: [city], config: cfg, now: date(2026, 11, 2, 15, 0),
+                                       cutoff: today, calendar: utcCalendar())
+        XCTAssertTrue(page.contains("<span class=\"count error\">BAD REQUEST</span>"))
+        XCTAssertFalse(page.contains("0 matches"))
+        let md = ReportRenderer.markdown(results: [city], config: cfg, now: date(2026, 11, 2, 15, 0),
+                                         cutoff: today, calendar: utcCalendar())
+        XCTAssertTrue(md.contains("## Luxembourg City (LU) - BAD REQUEST\n"))
+    }
+
+    func testErrorLabels() {
+        XCTAssertEqual(errorLabel(for: HTTPStatusError(statusCode: 404, url: "x")), "NOT FOUND")
+        XCTAssertEqual(errorLabel(for: URLError(.networkConnectionLost)), "CONNECTION LOST")
+        XCTAssertEqual(errorLabel(for: URLError(.timedOut)), "TIMED OUT")
+        XCTAssertEqual(errorLabel(for: CancellationError()), "ERROR")
+    }
+
+    func testLogShowsTheExactAddressRequested() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = ScanLog(fileURL: dir.appendingPathComponent("jobscan.log"))
+        let client = FakeClient { _, _ in HTTPResponse(statusCode: 200, body: "no jobs") }
+        let cfg = config()
+        _ = try await SiteScanner(client: client, sleep: noSleep, log: log)
+            .scanSearch(config: cfg, search: cfg.searches[4], today: today)
+        XCTAssertTrue(log.tail().contains(
+            "INFO GET https://englishjobs.lu/in/luxembourg/java_solution_architect?format=markdown&include=italian&sort=date"))
+    }
+
+    @MainActor
+    func testProgressNamesEachCityAndCountsThemOff() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // Oslo fails; it still counts as done.
+        let client = FakeClient { _, url in
+            url.host == "englishjobs.no" ? HTTPResponse(statusCode: 404, body: "")
+                                         : HTTPResponse(statusCode: 200, body: "no jobs today")
+        }
+        let updates = ProgressUpdates()
+        let runner = ScanRunner(config: config(), client: client, store: ReportStore(directory: dir), sleep: noSleep,
+                                calendar: utcCalendar(), now: { date(2026, 10, 27, 7, 13) },
+                                onProgress: { updates.all.append($0) })
+        _ = try await runner.run()
+
+        XCTAssertEqual(updates.all, [
+            ScanProgress(currentCity: "The Hague (NL)", completed: 0, total: 5),
+            ScanProgress(currentCity: "Amsterdam (NL)", completed: 1, total: 5),
+            ScanProgress(currentCity: "Stockholm (SE)", completed: 2, total: 5),
+            ScanProgress(currentCity: "Oslo (NO)", completed: 3, total: 5),
+            ScanProgress(currentCity: "Luxembourg City (LU)", completed: 4, total: 5),
+            ScanProgress(currentCity: nil, completed: 5, total: 5),
+        ])
+    }
+
+    func testStoppingKeepsWhatWasFoundAndMarksTheRest() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // Amsterdam's page 1 has jobs; Stop is pressed while page 2 is loading.
+        let client = FakeClient { _, url in
+            let address = url.absoluteString
+            if address.contains("/amsterdam/") {
+                if address.contains("page=2") { throw CancellationError() }
+                return HTTPResponse(statusCode: 200, body: ParserTests.sample)
+            }
+            return HTTPResponse(statusCode: 200, body: "no jobs today")
+        }
+        let cfg = config { $0.resultsSortedByDate = false; $0.reportFormats = [.txt] }
+        let store = ReportStore(directory: dir)
+        let outcome = try await ScanRunner(config: cfg, client: client, store: store, sleep: noSleep,
+                                           calendar: utcCalendar(), now: { date(2026, 10, 27, 7, 13) }).run()
+
+        XCTAssertTrue(outcome.stopped)
+        XCTAssertEqual(outcome.results.map(\.errorLabel),
+                       [nil, "STOPPED", "NOT SEARCHED", "NOT SEARCHED", "NOT SEARCHED"])
+        XCTAssertEqual(outcome.results[1].jobs.map(\.title), ["Senior Java Solution Architect", "Tech Lead - Payments"])
+        XCTAssertEqual(outcome.finishedCities, 1)
+        XCTAssertTrue(outcome.failures.isEmpty)   // stopping isn't a failure
+        XCTAssertFalse(outcome.allFailed)
+        XCTAssertFalse(client.calls.contains { ["englishjobsearch.se", "englishjobs.no", "englishjobs.lu"].contains($0.host ?? "") })
+
+        let txt = try String(contentsOf: store.fileURL(day: today, format: .txt), encoding: .utf8)
+        XCTAssertTrue(txt.contains("== Amsterdam (NL) - STOPPED =="))
+        XCTAssertTrue(txt.contains("* Senior Java Solution Architect"))
+        XCTAssertTrue(txt.contains("== Stockholm (SE) - NOT SEARCHED ==\n   Not searched: the search was stopped."))
+        XCTAssertFalse(txt.contains("ERROR: Not searched"))
+    }
+
+    func testCancellingTheScanStopsAHangingRequestAndStillWritesTheReport() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        struct HangingClient: HTTPClient {
+            func get(_ url: URL, timeout: TimeInterval) async throws -> HTTPResponse {
+                try await Task.sleep(nanoseconds: 30_000_000_000)
+                return HTTPResponse(statusCode: 200, body: "")
+            }
+        }
+        let runner = ScanRunner(config: config(), client: HangingClient(), store: ReportStore(directory: dir), sleep: noSleep,
+                                calendar: utcCalendar(), now: { date(2026, 10, 27, 7, 13) })
+        let task = Task { try await runner.run() }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        task.cancel()  // what the Stop button does
+        let outcome = try await task.value
+
+        XCTAssertTrue(outcome.stopped)
+        XCTAssertEqual(outcome.results[0].errorLabel, "STOPPED")
+        XCTAssertEqual(outcome.results.dropFirst().map(\.errorLabel), [String?](repeating: "NOT SEARCHED", count: 4))
+        XCTAssertEqual(outcome.reportFiles.map(\.lastPathComponent), ["jobs-2026-10-27.html"])
     }
 
     func testReportsListIsLimitedAndNewestFirst() throws {

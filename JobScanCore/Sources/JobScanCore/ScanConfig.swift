@@ -124,6 +124,27 @@ public struct ScanConfig: Codable, Hashable, Sendable {
         self.searches = searches
     }
 
+    /// No search set up: no search text, keywords, languages, cities or extra parameters.
+    /// What the app shows after the settings database is erased.
+    public static let empty = ScanConfig(
+        query: "",
+        keywords: [],
+        maxAgeDays: 1,
+        includeLanguages: [],
+        maxPages: 5,
+        requestDelaySeconds: 3,
+        resultsSortedByDate: false,
+        extraParams: [],
+        reportFormats: [.html],
+        keepReportsDays: 30,
+        searches: []
+    )
+
+    /// Nothing to search for yet (no search text, keywords or cities).
+    public var isUnset: Bool {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && keywords.isEmpty && searches.isEmpty
+    }
+
     /// The same settings as the bundled config.toml; used if that file can't be read.
     public static let builtInDefault = ScanConfig(
         query: "java solution architect",
@@ -268,9 +289,9 @@ extension ScanConfig {
 
 // MARK: - Storage
 
-/// The settings file: `config.toml` in the app's Documents folder (visible in the
-/// Files app). The editor rewrites it; it can also be edited by hand or shared.
-/// The copy bundled in the app is the factory default.
+/// Settings kept in a `config.toml` file. The app stores its settings in
+/// `SettingsDatabase`; this type provides the bundled defaults, imports the file the
+/// app used before, and is the fallback store if the database can't be opened.
 public struct ConfigStore: Sendable {
     /// Documents/config.toml
     public let fileURL: URL
