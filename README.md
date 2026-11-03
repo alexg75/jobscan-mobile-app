@@ -1,6 +1,6 @@
 # Anglo Job Radar (iOS)
 
-A Swift/SwiftUI iPhone and iPad app that scans the englishjobs.* job sites for
+A Swift/SwiftUI iPhone app that scans the englishjobs.* job sites for
 roles matching your search, with no server: the phone itself fetches the result
 pages, filters them and keeps the reports.
 
@@ -27,7 +27,7 @@ pages, filters them and keeps the reports.
 ## Requirements
 
 - A Mac with **Xcode 16 or newer**
-- iOS / iPadOS **17** or newer on the device
+- iOS **17** or newer on the device (iPhone only; on an iPad it runs as an iPhone app)
 - An Apple ID added to Xcode (a free one works for your own iPhone; see below)
 
 ## Run it
