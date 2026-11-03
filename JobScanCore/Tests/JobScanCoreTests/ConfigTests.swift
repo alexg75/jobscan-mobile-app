@@ -32,7 +32,7 @@ final class ConfigTests: XCTestCase {
     keep_reports_days = 30
 
     [[searches]]
-    name = "The Hague (NL)"
+    name = "S Gravenhage (NL)"
     site = "https://englishjobsearch.nl"
     location = "s-gravenhage"
 
@@ -52,7 +52,7 @@ final class ConfigTests: XCTestCase {
     location = "oslo"
 
     [[searches]]
-    name = "Luxembourg City (LU)"
+    name = "Luxembourg (LU)"
     site = "https://englishjobs.lu"
     location = "luxembourg"
     """#

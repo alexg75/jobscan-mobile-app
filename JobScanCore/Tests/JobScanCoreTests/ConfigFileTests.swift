@@ -32,7 +32,7 @@ final class ConfigFileTests: XCTestCase {
         let text = ScanConfig.builtInDefault.tomlString()
         XCTAssertEqual(try ScanConfig(toml: text), .builtInDefault)
         XCTAssertTrue(text.contains("extra_params = { sort = \"date\" }\n"))
-        XCTAssertTrue(text.contains("[[searches]]\nname = \"The Hague (NL)\"\nsite = \"https://englishjobsearch.nl\"\nlocation = \"s-gravenhage\"\n"))
+        XCTAssertTrue(text.contains("[[searches]]\nname = \"S Gravenhage (NL)\"\nsite = \"https://englishjobsearch.nl\"\nlocation = \"s-gravenhage\"\n"))
     }
 
     func testWriterEscapesAndRoundTripsUnusualValues() throws {

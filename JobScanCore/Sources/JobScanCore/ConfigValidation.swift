@@ -53,7 +53,17 @@ extension ScanConfig {
         c.extraParams = extraParams
             .map { QueryParam(name: $0.name.trimmed, value: $0.value.trimmed) }
             .filter { !($0.name.isEmpty && $0.value.isEmpty) }
-        c.searches = searches.map { $0.normalized() }
+        // Each city's name comes from its location and site. Two cities with the same
+        // name can't both be kept: the later one replaces the earlier one, in its place.
+        var cities: [SearchTarget] = []
+        for s in searches.map({ $0.normalized() }) {
+            if !s.name.isEmpty, let i = cities.firstIndex(where: { $0.name.lowercased() == s.name.lowercased() }) {
+                cities[i] = SearchTarget(id: cities[i].id, name: s.name, site: s.site, location: s.location)
+            } else {
+                cities.append(s)
+            }
+        }
+        c.searches = cities
         return c
     }
 
@@ -99,14 +109,7 @@ extension ScanConfig {
         if searches.isEmpty {
             issues.append(ConfigIssue(.searches, "Add at least one city."))
         }
-        var cityNames = Set<String>()
         for s in searches {
-            let name = s.name.trimmed
-            if name.isEmpty {
-                issues.append(ConfigIssue(.search(s.id), "Enter a name for the city."))
-            } else if !cityNames.insert(name.lowercased()).inserted {
-                issues.append(ConfigIssue(.search(s.id), "Another city is already called \"\(name)\"."))
-            }
             if !SearchTarget.isValidSite(s.site) {
                 issues.append(ConfigIssue(.search(s.id), "The site must be a web address starting with https://"))
             }
@@ -122,11 +125,31 @@ extension ScanConfig {
 }
 
 extension SearchTarget {
+    /// Trims the fields, removes a trailing "/" from the site and sets the name from the
+    /// location and the site (see `cityName(site:location:)`).
     public func normalized() -> SearchTarget {
         var site = self.site.trimmed
         while site.hasSuffix("/") { site.removeLast() }
-        return SearchTarget(id: id, name: name.trimmed, site: site, location: location.trimmed)
+        let location = self.location.trimmed
+        return SearchTarget(id: id, name: Self.cityName(site: site, location: location), site: site, location: location)
     }
+
+    /// The city's name, made from the location and the site's country domain:
+    /// "amsterdam" on https://englishjobsearch.nl -> "Amsterdam (NL)",
+    /// "s-gravenhage" -> "S Gravenhage (NL)". Empty when there's no location.
+    public static func cityName(site: String, location: String) -> String {
+        let words = location.trimmed
+            .split(whereSeparator: { $0 == "-" || $0 == "_" || $0.isWhitespace })
+            .map { String($0.prefix(1)).uppercased() + String($0.dropFirst()) }
+        guard !words.isEmpty else { return "" }
+        let place = words.joined(separator: " ")
+        guard let host = URL(string: site.trimmed)?.host, host.contains("."),
+              let country = host.split(separator: ".").last, !country.isEmpty else { return place }
+        return "\(place) (\(country.uppercased()))"
+    }
+
+    /// The name this city gets when saved.
+    public var cityName: String { Self.cityName(site: site, location: location) }
 
     /// "https://host" with no path, query or spaces.
     public static func isValidSite(_ text: String) -> Bool {

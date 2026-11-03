@@ -70,16 +70,16 @@ final class AppModel {
         self.store = ReportStore(directory: documents)
         self.log = log
         self.settings = settings
-        self.config = loaded.config
+        self.config = loaded.config.normalized()
         self.configProblem = loaded.problem ?? startupProblem
-        self.isCustomConfig = loaded.problem == nil && loaded.config != settings.loadDefaults().config
+        self.isCustomConfig = loaded.problem == nil && loaded.config.normalized() != settings.loadDefaults().config.normalized()
         self.hasSavedSettings = !settings.isEmpty
         reloadReports()
     }
 
     // MARK: Header text
 
-    /// "Java Solution Architect roles · The Hague, Amsterdam, Stockholm, Oslo, Luxembourg City"
+    /// "Java Solution Architect roles · S Gravenhage, Amsterdam, Stockholm, Oslo, Luxembourg"
     var subtitle: String {
         if config.query.trimmingCharacters(in: .whitespaces).isEmpty || config.searches.isEmpty {
             return "No search set up yet"
@@ -103,9 +103,9 @@ final class AppModel {
     func reloadConfig() {
         guard !isRunning else { return }
         let loaded = settings.load()
-        config = loaded.config
+        config = loaded.config.normalized()
         configProblem = loaded.problem
-        isCustomConfig = loaded.problem == nil && loaded.config != settings.loadDefaults().config
+        isCustomConfig = loaded.problem == nil && loaded.config.normalized() != settings.loadDefaults().config.normalized()
         hasSavedSettings = !settings.isEmpty
     }
 
@@ -117,7 +117,7 @@ final class AppModel {
         try settings.save(clean)
         config = clean
         configProblem = nil
-        isCustomConfig = clean != settings.loadDefaults().config
+        isCustomConfig = clean != settings.loadDefaults().config.normalized()
         hasSavedSettings = !settings.isEmpty
         log.info("Settings saved")
     }
@@ -128,7 +128,7 @@ final class AppModel {
     func eraseSettings() throws {
         try settings.reset()
         let loaded = settings.load()
-        config = loaded.config
+        config = loaded.config.normalized()
         configProblem = loaded.problem
         isCustomConfig = false
         hasSavedSettings = !settings.isEmpty

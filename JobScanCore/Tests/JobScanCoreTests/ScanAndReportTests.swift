@@ -368,11 +368,11 @@ final class ScanAndReportTests: XCTestCase {
         _ = try await runner.run()
 
         XCTAssertEqual(updates.all, [
-            ScanProgress(currentCity: "The Hague (NL)", completed: 0, total: 5),
+            ScanProgress(currentCity: "S Gravenhage (NL)", completed: 0, total: 5),
             ScanProgress(currentCity: "Amsterdam (NL)", completed: 1, total: 5),
             ScanProgress(currentCity: "Stockholm (SE)", completed: 2, total: 5),
             ScanProgress(currentCity: "Oslo (NO)", completed: 3, total: 5),
-            ScanProgress(currentCity: "Luxembourg City (LU)", completed: 4, total: 5),
+            ScanProgress(currentCity: "Luxembourg (LU)", completed: 4, total: 5),
             ScanProgress(currentCity: nil, completed: 5, total: 5),
         ])
     }

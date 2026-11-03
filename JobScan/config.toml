@@ -26,7 +26,7 @@ report_formats = ["html"]
 keep_reports_days = 30
 
 [[searches]]
-name = "The Hague (NL)"
+name = "S Gravenhage (NL)"
 site = "https://englishjobsearch.nl"
 location = "s-gravenhage"
 
@@ -46,6 +46,6 @@ site = "https://englishjobs.no"
 location = "oslo"
 
 [[searches]]
-name = "Luxembourg City (LU)"
+name = "Luxembourg (LU)"
 site = "https://englishjobs.lu"
 location = "luxembourg"

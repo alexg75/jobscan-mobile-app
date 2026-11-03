@@ -120,11 +120,11 @@ extension StoredSettings {
 
 /// Settings kept in a SwiftData database on the phone (no server).
 ///
-/// - First launch only: the database is filled from the config.toml the app kept in its
-///   Documents folder before (then renamed config.imported.toml), or, on a new install,
-///   from the config.toml bundled with the app.
-/// - After that the bundled file is never used: an empty database (e.g. after `reset()`)
-///   means empty settings, `ScanConfig.empty`, until new ones are saved.
+/// - A new install starts with an empty database: empty settings (`ScanConfig.empty`)
+///   until the user enters some and saves. The bundled config.toml is not copied in.
+/// - First launch only: if an older version of the app left a config.toml in Documents,
+///   it is imported once (then renamed config.imported.toml).
+/// - An empty database (new install, or after `reset()`) always means empty settings.
 @MainActor
 public final class SettingsDatabase: SettingsStore {
     public let container: ModelContainer
@@ -214,10 +214,9 @@ public final class SettingsDatabase: SettingsStore {
         return try? context.fetch(descriptor).first
     }
 
-    /// First launch only: fills the database from the old Documents/config.toml (or
-    /// config.json) if there is one, otherwise from the bundled config.toml. Databases that
-    /// already have settings are left as they are. Never runs again, so an erased database
-    /// stays empty.
+    /// First launch only: imports the old Documents/config.toml (or config.json) if an
+    /// older version left one. Otherwise the database stays empty. Databases that already
+    /// have settings are left as they are. Never runs again, so an erased database stays empty.
     func initialiseIfNeeded() -> String? {
         guard !markers.bool(forKey: Self.initialisedKey) else { return nil }
         if fetchSettings() != nil {
@@ -228,19 +227,19 @@ public final class SettingsDatabase: SettingsStore {
         let fm = FileManager.default
         let hasTOML = fm.fileExists(atPath: legacy.fileURL.path)
         let hasJSON = legacy.legacyJSON.map { fm.fileExists(atPath: $0.path) } ?? false
+        guard hasTOML || hasJSON else {
+            // New install: start with an empty database.
+            markers.set(true, forKey: Self.initialisedKey)
+            return nil
+        }
         var problem: String?
-        let seed: ScanConfig
         var importedFile = false
-        if hasTOML || hasJSON {
-            let loaded = legacy.load()  // the defaults if the file can't be used
-            seed = loaded.config
-            if let fileProblem = loaded.problem {
-                problem = "config.toml couldn't be imported (\(fileProblem)), so the default settings were used. The file was left as it is."
-            } else {
-                importedFile = true
-            }
+        let loaded = legacy.load()  // the defaults if the file can't be used
+        let seed = loaded.config
+        if let fileProblem = loaded.problem {
+            problem = "config.toml couldn't be imported (\(fileProblem)), so the default settings were used. The file was left as it is."
         } else {
-            seed = loadDefaults().config
+            importedFile = true
         }
 
         do {

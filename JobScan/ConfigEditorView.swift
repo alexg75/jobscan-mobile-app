@@ -126,7 +126,8 @@ struct ConfigEditorView: View {
         Section {
             ForEach(draft.searches) { search in
                 NavigationLink(value: search.id) {
-                    CityRow(search: search, hasProblem: !messages(.search(search.id)).isEmpty)
+                    CityRow(search: search, hasProblem: !messages(.search(search.id)).isEmpty,
+                            isDuplicate: duplicateNote(for: search.id) != nil)
                 }
             }
             .onDelete { draft.searches.remove(atOffsets: $0) }
@@ -148,7 +149,7 @@ struct ConfigEditorView: View {
             }
         } footer: {
             let cityProblems = draft.searches.contains { !messages(.search($0.id)).isEmpty }
-            FieldFooter(help: "Swipe to delete. Tap Edit to reorder; reports list the cities in this order.",
+            FieldFooter(help: "Swipe to delete. Tap Edit to reorder; reports list the cities in this order. Two cities with the same name can't both be kept: on Save, the lower one replaces the other.",
                         problems: messages(.searches) + (cityProblems ? ["Fix the cities marked with ⚠︎."] : []))
         }
     }
@@ -250,10 +251,25 @@ struct ConfigEditorView: View {
         if let index = draft.searches.firstIndex(where: { $0.id == id }) {
             CityEditorView(search: cityBinding(id, fallback: draft.searches[index]),
                            config: draft.normalized(),
-                           problems: messages(.search(id)))
+                           problems: messages(.search(id)),
+                           duplicateNote: duplicateNote(for: id))
         } else {
             ContentUnavailableView("City removed", systemImage: "mappin.slash")
         }
+    }
+
+    /// Explains which city is kept when another city in the list gets the same name:
+    /// on Save the one lower in the list replaces the one above it.
+    private func duplicateNote(for id: UUID) -> String? {
+        let names = draft.searches.map { $0.normalized().name.lowercased() }
+        guard let index = draft.searches.firstIndex(where: { $0.id == id }), !names[index].isEmpty else { return nil }
+        let name = draft.searches[index].normalized().name
+        let others = names.indices.filter { $0 != index && names[$0] == names[index] }
+        guard !others.isEmpty else { return nil }
+        if others.contains(where: { $0 > index }) {
+            return "Another \(name) lower in the list replaces this one when you save."
+        }
+        return "When you save, this replaces the \(name) already in the list."
     }
 
     /// A binding to one city that stays safe if the list changes underneath it.
@@ -288,12 +304,14 @@ struct FieldFooter: View {
 private struct CityRow: View {
     let search: SearchTarget
     let hasProblem: Bool
+    let isDuplicate: Bool
 
     var body: some View {
+        let name = search.normalized().name
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(search.name.isEmpty ? "New city" : search.name)
-                    .foregroundStyle(search.name.isEmpty ? .secondary : .primary)
+                Text(name.isEmpty ? "New city" : name)
+                    .foregroundStyle(name.isEmpty ? .secondary : .primary)
                 Text("\(URL(string: search.site)?.host ?? search.site) · \(search.location.isEmpty ? "no location" : search.location)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -303,6 +321,11 @@ private struct CityRow: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
                     .accessibilityLabel("Needs attention")
+            } else if isDuplicate {
+                Spacer()
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("Same name as another city")
             }
         }
     }

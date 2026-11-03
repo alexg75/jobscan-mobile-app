@@ -5,6 +5,7 @@ public struct SearchTarget: Codable, Hashable, Sendable, Identifiable {
     /// Stable identity for lists in the UI. Not part of config.toml, and ignored
     /// when comparing two cities (two cities are equal when their settings are).
     public var id: UUID
+    /// "Amsterdam (NL)": made from `location` and `site` by `normalized()`; not edited directly.
     public var name: String
     /// e.g. "https://englishjobsearch.nl"
     public var site: String
@@ -158,11 +159,11 @@ public struct ScanConfig: Codable, Hashable, Sendable {
         reportFormats: [.html],
         keepReportsDays: 30,
         searches: [
-            SearchTarget(name: "The Hague (NL)", site: "https://englishjobsearch.nl", location: "s-gravenhage"),
+            SearchTarget(name: "S Gravenhage (NL)", site: "https://englishjobsearch.nl", location: "s-gravenhage"),
             SearchTarget(name: "Amsterdam (NL)", site: "https://englishjobsearch.nl", location: "amsterdam"),
             SearchTarget(name: "Stockholm (SE)", site: "https://englishjobsearch.se", location: "stockholm"),
             SearchTarget(name: "Oslo (NO)", site: "https://englishjobs.no", location: "oslo"),
-            SearchTarget(name: "Luxembourg City (LU)", site: "https://englishjobs.lu", location: "luxembourg"),
+            SearchTarget(name: "Luxembourg (LU)", site: "https://englishjobs.lu", location: "luxembourg"),
         ]
     )
 }
@@ -191,7 +192,10 @@ extension ScanConfig {
                 guard case .string(let s) = v else { throw ConfigError(message: "searches #\(index + 1): '\(key)' must be a string") }
                 return s
             }
-            searches.append(SearchTarget(name: try field("name"), site: try field("site"), location: try field("location")))
+            // 'name' is optional: the app makes it from the location and site.
+            var name = ""
+            if case .string(let s)? = t["name"] { name = s }
+            searches.append(SearchTarget(name: name, site: try field("site"), location: try field("location")))
         }
 
         var extraParams: [QueryParam] = []

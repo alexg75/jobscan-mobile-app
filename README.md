@@ -71,10 +71,10 @@ Or open `JobScanCore/Package.swift` in Xcode and press ⌘U.
 
 ## Changing what it searches
 
-The settings are stored in a **SwiftData database on the phone** (no server). On the
-very first launch the database is filled from the `config.toml` the app ships with
-(`JobScan/config.toml`); after that the file isn't used, so editing it only affects
-new installs.
+The settings are stored in a **SwiftData database on the phone** (no server). A new
+install starts with an **empty** database: nothing is searched until you enter your
+settings and Save (or import a config.toml). The `config.toml` the app ships with
+(`JobScan/config.toml`) is not copied in; it is only used if the database can't be opened.
 
 **In the app:** Settings › **Edit Settings**. You edit a copy: nothing changes
 until you tap **Save**, and Save stays disabled until every setting is valid
@@ -82,9 +82,13 @@ until you tap **Save**, and Save stays disabled until every setting is valid
 
 - **Search for**, **title keywords**, **posted** (today, today or yesterday, …),
   **extra languages**
-- **Cities**: add, swipe to delete, Edit to reorder. Each city has a name, a job
-  site (pick one of the englishjobs.* sites or "Other…") and a location. **Test
-  this city** fetches the first results page to check the location is right.
+- **Cities**: add, swipe to delete, Edit to reorder. Each city has a job site (pick
+  one of the englishjobs.* sites or "Other…") and a location. Its name is made from
+  those and can't be typed: location `amsterdam` on englishjobsearch.nl is
+  "Amsterdam (NL)". Two cities can't have the same name: on Save, the one lower in
+  the list replaces the other (keeping the other's place). **Test this city** fetches
+  the first results page to check the location is right. Imported config.toml files
+  don't need a `name`; any name in them is replaced the same way.
 - **Reports**: formats and how many days to keep them
 - **Advanced**: pages per city, wait between requests (at least 1 s), stopping at
   old results, extra query parameters
@@ -118,7 +122,7 @@ jobscan-mobile-app/
     ReportView.swift          report viewer and sharing
     SettingsView.swift        search settings summary, edit, import/export, log
     ConfigEditorView.swift    settings editor (draft, Save/Cancel, inline problems, erase database)
-    CityEditorView.swift      one city: name, site, location, "Test this city"
+    CityEditorView.swift      one city: site, location, its generated name, "Test this city"
     config.toml               the default settings
   JobScanCore/              Swift package: all the scanning logic
     Sources/JobScanCore/

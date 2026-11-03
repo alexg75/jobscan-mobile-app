@@ -1,12 +1,15 @@
 import SwiftUI
 import JobScanCore
 
-/// One city: its name, job site and location slug, plus a quick test against the site.
+/// One city: its job site and location slug, plus a quick test against the site.
+/// The city's name is made from those two and can't be typed.
 struct CityEditorView: View {
     @Binding var search: SearchTarget
     /// The settings being edited (used by the test: query, keywords, languages…).
     let config: ScanConfig
     let problems: [String]
+    /// Set when another city in the list gets the same name (only one is kept on Save).
+    let duplicateNote: String?
 
     @State private var useOtherSite: Bool
     @State private var test: TestState = .idle
@@ -19,24 +22,17 @@ struct CityEditorView: View {
 
     private static let otherSite = "other"
 
-    init(search: Binding<SearchTarget>, config: ScanConfig, problems: [String]) {
+    init(search: Binding<SearchTarget>, config: ScanConfig, problems: [String], duplicateNote: String? = nil) {
         _search = search
         self.config = config
         self.problems = problems
+        self.duplicateNote = duplicateNote
         let site = search.wrappedValue.normalized().site
         _useOtherSite = State(initialValue: !SearchTarget.knownSites.contains { $0.url == site })
     }
 
     var body: some View {
         Form {
-            Section {
-                TextField("e.g. Amsterdam (NL)", text: $search.name)
-            } header: {
-                Text("Name")
-            } footer: {
-                Text("Used as the heading for this city in the reports.")
-            }
-
             Section {
                 Picker("Site", selection: siteSelection) {
                     ForEach(SearchTarget.knownSites) { site in
@@ -62,6 +58,17 @@ struct CityEditorView: View {
                 Text("Location")
             } footer: {
                 Text("The city part of the site's own link for that city, e.g. s-gravenhage in englishjobsearch.nl/in/s-gravenhage. The site's /llms.txt page lists them.")
+            }
+
+            Section {
+                LabeledContent("City", value: cityName.isEmpty ? "Enter a location" : cityName)
+                    .foregroundStyle(cityName.isEmpty ? .secondary : .primary)
+                if let duplicateNote {
+                    Label(duplicateNote, systemImage: "arrow.triangle.2.circlepath")
+                        .foregroundStyle(.orange)
+                }
+            } footer: {
+                Text("Made from the location and the job site's country, e.g. amsterdam on englishjobsearch.nl is Amsterdam (NL). Used as the heading for this city in the reports.")
             }
 
             if !problems.isEmpty {
@@ -92,15 +99,17 @@ struct CityEditorView: View {
                         .foregroundStyle(ok ? Color.green : Color.red)
                 }
             } footer: {
-                Text("Fetches the first page of results with the search text, keywords and languages you're editing.")
+                Text("Needs only the job site and location. Fetches the first page of results, using the search text, keywords and languages you're editing if they're filled in.")
             }
         }
-        .navigationTitle(search.name.trimmingCharacters(in: .whitespaces).isEmpty ? "New city" : search.name)
+        .navigationTitle(cityName.isEmpty ? "New city" : cityName)
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: search) { _, _ in
             test = .idle  // an old result no longer applies
         }
     }
+
+    private var cityName: String { search.normalized().name }
 
     private var siteSelection: Binding<String> {
         Binding(
@@ -116,10 +125,14 @@ struct CityEditorView: View {
         )
     }
 
+    /// Only the job site and location are needed; the search text and keywords are optional.
     private var canTest: Bool {
         let s = search.normalized()
         return SearchTarget.isValidSite(s.site) && !s.location.isEmpty
-            && !config.query.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var hasSearchSetUp: Bool {
+        !config.query.trimmingCharacters(in: .whitespaces).isEmpty && !config.keywords.isEmpty
     }
 
     private func runTest() async {
@@ -129,6 +142,8 @@ struct CityEditorView: View {
             let result = try await scanner.probe(config: config, search: search.normalized(), today: Day(Date()))
             if result.found == 0 {
                 test = .finished(message: "The site returned no jobs for this search. Check the location.", ok: false)
+            } else if !hasSearchSetUp {
+                test = .finished(message: "The location works: found \(result.found) jobs on the first page. Enter the search text and keywords to see how many match.", ok: true)
             } else {
                 test = .finished(message: "Found \(result.found) jobs on the first page; \(result.matching) match your keywords and date range.", ok: true)
             }

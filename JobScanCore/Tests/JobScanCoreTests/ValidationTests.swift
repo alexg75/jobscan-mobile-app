@@ -48,15 +48,42 @@ final class ValidationTests: XCTestCase {
 
     func testCityProblemsPointAtTheCity() {
         var c = ScanConfig.builtInDefault
-        let bad = SearchTarget(name: "amsterdam (nl)", site: "http://example.com/x", location: "new york")
-        c.searches.append(bad)
+        let bad = SearchTarget(name: "", site: "http://example.com/x", location: "new york")
+        let noLocation = SearchTarget(name: "Typed name", site: "https://englishjobs.no", location: " ")
+        c.searches += [bad, noLocation]
         let issues = c.normalized().validate()
-        XCTAssertEqual(issues.map(\.field), [.search(bad.id), .search(bad.id), .search(bad.id)])
+        XCTAssertEqual(issues.map(\.field), [.search(bad.id), .search(bad.id), .search(noLocation.id)])
         XCTAssertEqual(issues.map(\.message), [
-            "Another city is already called \"amsterdam (nl)\".",
             "The site must be a web address starting with https://",
             "The location can't contain spaces, /, ? or #.",
+            "Enter the location, e.g. amsterdam.",
         ])
+    }
+
+    func testCityNameIsMadeFromLocationAndSite() {
+        XCTAssertEqual(SearchTarget.cityName(site: "https://englishjobsearch.nl", location: "amsterdam"), "Amsterdam (NL)")
+        XCTAssertEqual(SearchTarget.cityName(site: "https://englishjobsearch.nl/", location: " s-gravenhage "), "S Gravenhage (NL)")
+        XCTAssertEqual(SearchTarget.cityName(site: "https://englishjobs.lu", location: "luxembourg"), "Luxembourg (LU)")
+        XCTAssertEqual(SearchTarget.cityName(site: "", location: "oslo"), "Oslo")
+        XCTAssertEqual(SearchTarget.cityName(site: "https://englishjobs.no", location: ""), "")
+
+        // Whatever name was typed or imported, normalizing replaces it.
+        let city = SearchTarget(name: "My favourite", site: "https://englishjobsearch.se", location: "stockholm")
+        XCTAssertEqual(city.normalized().name, "Stockholm (SE)")
+        XCTAssertEqual(ScanConfig.builtInDefault.normalized(), ScanConfig.builtInDefault)
+    }
+
+    func testACityWithTheSameNameReplacesTheEarlierOne() {
+        var c = ScanConfig.builtInDefault
+        let first = c.searches[1]  // Amsterdam (NL) on englishjobsearch.nl, second in the list
+        let again = SearchTarget(name: "", site: "https://englishjobsearch.nl/", location: "Amsterdam")
+        c.searches.append(again)
+        let n = c.normalized()
+        XCTAssertEqual(n.searches.count, 5)
+        XCTAssertEqual(n.searches[1].id, first.id)           // keeps its place in the list
+        XCTAssertEqual(n.searches[1].location, "Amsterdam")  // with the later city's details
+        XCTAssertEqual(n.searches[1].name, "Amsterdam (NL)")
+        XCTAssertEqual(n.validate(), [])
     }
 
     func testExtraParams() {
@@ -65,6 +92,20 @@ final class ValidationTests: XCTestCase {
                          QueryParam(name: "Sort", value: "x"), QueryParam(name: "", value: "y")]
         XCTAssertEqual(messages(c), ["\"page\" is set by the app and can't be an extra parameter.",
                                      "\"Sort\" is listed twice.", "Every extra parameter needs a name."])
+    }
+
+    func testCityCanBeTestedBeforeTheSearchTextIsEntered() async throws {
+        XCTAssertEqual(SiteScanner.searchURL(site: "https://englishjobsearch.nl/", location: "amsterdam", query: " "),
+                       "https://englishjobsearch.nl/in/amsterdam")
+        XCTAssertEqual(SiteScanner.searchURL(site: "https://englishjobsearch.nl", location: "amsterdam", query: "java architect"),
+                       "https://englishjobsearch.nl/in/amsterdam/java_architect")
+
+        let client = FakeClient { _, _ in HTTPResponse(statusCode: 200, body: ParserTests.sample) }
+        let today = Day(year: 2026, month: 10, day: 27)!
+        let result = try await SiteScanner(client: client, sleep: noSleep)
+            .probe(config: .empty, search: ScanConfig.builtInDefault.searches[1], today: today)
+        XCTAssertEqual(client.calls.count, 1)
+        XCTAssertEqual(result.found, 4)
     }
 
     func testSiteCheck() {

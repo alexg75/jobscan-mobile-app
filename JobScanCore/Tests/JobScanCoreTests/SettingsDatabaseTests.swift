@@ -64,13 +64,17 @@ final class SettingsDatabaseTests: XCTestCase {
     }
 
     @MainActor
-    func testFirstLaunchStartsFromTheBundledConfigToml() throws {
+    func testANewInstallStartsWithAnEmptyDatabase() throws {
         let (db, _) = try makeDatabase()
         let loaded = db.load()
-        XCTAssertEqual(loaded.config, .builtInDefault)
+        XCTAssertEqual(loaded.config, .empty)  // the bundled config.toml is not copied in
         XCTAssertNil(loaded.problem)
-        XCTAssertFalse(db.isEmpty)  // the defaults are now in the database
-        XCTAssertEqual(db.recordCount().settings, 1)
+        XCTAssertTrue(db.isEmpty)
+        XCTAssertEqual(db.recordCount().settings, 0)
+
+        XCTAssertTrue(db.load().config.isUnset)  // still empty on the next launch
+        try db.save(customConfig())
+        XCTAssertEqual(db.load().config, customConfig())
     }
 
     @MainActor
@@ -105,7 +109,7 @@ final class SettingsDatabaseTests: XCTestCase {
     @MainActor
     func testErasingLeavesEmptySettingsNotTheDefaults() throws {
         let (db, _) = try makeDatabase()
-        _ = db.load()  // first launch: defaults copied in
+        _ = db.load()  // first launch
         try db.save(customConfig())
         XCTAssertFalse(db.isEmpty)
 

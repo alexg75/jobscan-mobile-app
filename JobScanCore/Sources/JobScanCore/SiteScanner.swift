@@ -37,9 +37,11 @@ public struct SiteScanner: Sendable {
     }
 
     /// The site's own search box writes spaces as underscores: /in/amsterdam/java_solution_architect
+    /// With no search text (testing a city before it's entered) it's just the city: /in/amsterdam
     public static func searchURL(site: String, location: String, query: String) -> String {
         let slug = query.lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: "_")
         let encoded = slug.addingPercentEncoding(withAllowedCharacters: pathSafe) ?? slug
+        if encoded.isEmpty { return "\(trimSlashes(site))/in/\(location)" }
         return "\(trimSlashes(site))/in/\(location)/\(encoded)"
     }
 
