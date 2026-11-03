@@ -127,6 +127,7 @@ jobscan-mobile-app/
     ConfigEditorView.swift    settings editor (draft, Save/Cancel, inline problems, erase database)
     CityEditorView.swift      one city: site, location, its generated name, "Test this city"
     config.toml               the default settings
+    PrivacyInfo.xcprivacy     privacy manifest: no data collected, no tracking; declares UserDefaults and file dates
   JobScanCore/              Swift package: all the scanning logic
     Sources/JobScanCore/
       ResultsParser.swift       results pages: dates, job blocks, next page, keyword filter
