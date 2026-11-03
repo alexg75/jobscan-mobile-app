@@ -233,7 +233,7 @@ final class ScanAndReportTests: XCTestCase {
         XCTAssertTrue(text.contains("== Stockholm - ERROR =="))
         XCTAssertTrue(text.contains("== Oslo - 0 matches =="))
         XCTAssertTrue(text.contains("Extra languages: italian"))
-        XCTAssertTrue(text.hasPrefix("Job scan - 2026-10-27 07:00\n"))
+        XCTAssertTrue(text.hasPrefix("Anglo Job Radar - 2026-10-27 07:00\n"))
     }
 
     func testMarkdownReportTableAndLinks() {
@@ -245,7 +245,7 @@ final class ScanAndReportTests: XCTestCase {
                                                    CityResult(name: "Amsterdam (NL)", jobs: jobs)],
                                          config: cfg, now: date(2026, 10, 27, 15, 0),
                                          cutoff: Day(year: 2026, month: 10, day: 26)!, calendar: utcCalendar())
-        XCTAssertTrue(md.hasPrefix("# Job scan - 2026-10-27 15:00"))
+        XCTAssertTrue(md.hasPrefix("# Anglo Job Radar - 2026-10-27 15:00"))
         XCTAssertTrue(md.contains("## The Hague (NL) - 0 matches"))
         XCTAssertTrue(md.contains("_No matching jobs._"))
         XCTAssertTrue(md.contains("## Amsterdam (NL) - 1 match\n"))
@@ -343,7 +343,7 @@ final class ScanAndReportTests: XCTestCase {
     func testLogShowsTheExactAddressRequested() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let log = ScanLog(fileURL: dir.appendingPathComponent("jobscan.log"))
+        let log = ScanLog(fileURL: dir.appendingPathComponent("anglo-job-scan.log"))
         let client = FakeClient { _, _ in HTTPResponse(statusCode: 200, body: "no jobs") }
         let cfg = config()
         _ = try await SiteScanner(client: client, sleep: noSleep, log: log)

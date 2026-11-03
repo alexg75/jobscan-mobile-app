@@ -22,7 +22,7 @@ struct HomeView: View {
                     }
                 }
             }
-            .navigationTitle("Job Scan")
+            .navigationTitle("Anglo Job Radar")
             .navigationDestination(for: ReportEntry.self) { entry in
                 ReportView(entry: entry)
             }

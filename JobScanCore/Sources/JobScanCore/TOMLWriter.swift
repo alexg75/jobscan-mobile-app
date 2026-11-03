@@ -4,7 +4,7 @@ extension ScanConfig {
     /// The settings as a config.toml file, with a comment explaining each setting.
     public func tomlString() -> String {
         var out: [String] = [
-            "# Job Scan settings.",
+            "# Anglo Job Radar settings.",
             "# Saved by the app (Settings > Edit Settings); you can also edit it by hand.",
             "",
             "# Search text sent to every site (becomes /in/{location}/{query})",

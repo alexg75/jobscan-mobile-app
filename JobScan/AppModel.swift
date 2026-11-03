@@ -49,7 +49,7 @@ final class AppModel {
         let fm = FileManager.default
         let documents = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let log = ScanLog(fileURL: documents.appendingPathComponent("jobscan.log"))
+        let log = ScanLog(fileURL: documents.appendingPathComponent("anglo-job-scan.log"))
         // The defaults bundled with the app, and the config.toml file used until now
         // (imported into the database once).
         let configFile = ConfigStore(fileURL: documents.appendingPathComponent("config.toml"),
@@ -249,7 +249,7 @@ private final class BackgroundTime {
     private var id: UIBackgroundTaskIdentifier = .invalid
 
     init() {
-        id = UIApplication.shared.beginBackgroundTask(withName: "Job scan") { [weak self] in
+        id = UIApplication.shared.beginBackgroundTask(withName: "Anglo Job Radar scan") { [weak self] in
             MainActor.assumeIsolated { self?.end() }
         }
     }

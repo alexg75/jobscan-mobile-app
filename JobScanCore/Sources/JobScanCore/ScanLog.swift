@@ -1,6 +1,6 @@
 import Foundation
 
-/// Appends lines to jobscan.log:
+/// Appends lines to the scan log (anglo-job-scan.log in the app):
 /// `2026-10-28 09:26:53,864 INFO GET https://…`
 public final class ScanLog: @unchecked Sendable {
     public let fileURL: URL

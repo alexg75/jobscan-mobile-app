@@ -26,7 +26,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: JobScan-Info.plist
-        INFOPLIST_KEY_CFBundleDisplayName: Job Scan
+        INFOPLIST_KEY_CFBundleDisplayName: AngloRadar
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES

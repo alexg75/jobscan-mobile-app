@@ -151,7 +151,7 @@ struct SettingsView: View {
         } header: {
             Text("Files")
         } footer: {
-            Text("Reports and jobscan.log are also in the Files app, under On My iPhone › Job Scan.")
+            Text("Reports and anglo-job-scan.log are also in the Files app, under On My iPhone › AngloRadar.")
         }
     }
 }

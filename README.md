@@ -1,4 +1,4 @@
-# Job Scan for iOS
+# Anglo Job Radar (iOS)
 
 A Swift/SwiftUI iPhone and iPad app that scans the englishjobs.* job sites for
 roles matching your search, with no server: the phone itself fetches the result
@@ -21,8 +21,8 @@ pages, filters them and keeps the reports.
   a word in the title starts with one of the keywords
 - **Settings:** stored in a database on the phone, editable in the app; import and
   export as `config.toml`
-- **Files:** reports and `jobscan.log` are in the app's folder in
-  the Files app (On My iPhone › Job Scan); the log is also under Settings › Scan log
+- **Files:** reports and `anglo-job-scan.log` are in the app's folder in
+  the Files app (On My iPhone › AngloRadar); the log is also under Settings › Scan log
 
 ## Requirements
 

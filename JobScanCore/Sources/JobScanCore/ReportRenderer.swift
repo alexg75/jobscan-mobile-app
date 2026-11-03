@@ -30,7 +30,7 @@ public enum ReportRenderer {
         var posted = "Posted on or after: \(cutoff)"
         if !langs.isEmpty { posted += " | Extra languages: \(langs.joined(separator: ", "))" }
         var out = [
-            "Job scan - \(timestamp(now, calendar: calendar))",
+            "Anglo Job Radar - \(timestamp(now, calendar: calendar))",
             "Query: \"\(config.query)\" | Title keywords: \(config.keywords.joined(separator: ", "))",
             posted,
             "Total matches: \(total(results))",
@@ -69,7 +69,7 @@ public enum ReportRenderer {
         meta += "Posted on or after: \(cutoff)"
         if !langs.isEmpty { meta += " · Extra languages: \(langs.joined(separator: ", "))" }
         meta += " · **\(n) matches**"
-        var out = ["# Job scan - \(timestamp(now, calendar: calendar))", "", meta, ""]
+        var out = ["# Anglo Job Radar - \(timestamp(now, calendar: calendar))", "", meta, ""]
         for city in results {
             out.append("## \(city.name) - \(status(city))")
             out.append("")
@@ -148,8 +148,8 @@ public enum ReportRenderer {
         meta += " · <strong>\(n) \(matches(n))</strong>"
         var out = ["<!doctype html>", "<html lang=\"en\">", "<head>", "<meta charset=\"utf-8\">",
                    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
-                   "<title>Job scan \(Day(now, calendar: calendar))</title>", "<style>\(style)</style>", "</head>",
-                   "<body><main>", "<h1>Job scan - \(stamp)</h1>", "<p class=\"meta\">\(meta)</p>"]
+                   "<title>Anglo Job Radar \(Day(now, calendar: calendar))</title>", "<style>\(style)</style>", "</head>",
+                   "<body><main>", "<h1>Anglo Job Radar - \(stamp)</h1>", "<p class=\"meta\">\(meta)</p>"]
         for city in results {
             let countClass = city.error == nil ? "count" : "count error"
             out.append("<h2>\(e(city.name)) <span class=\"\(countClass)\">\(e(status(city)))</span></h2>")

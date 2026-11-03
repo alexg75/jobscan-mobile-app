@@ -35,7 +35,7 @@ public struct ReportEntry: Identifiable, Hashable, Sendable {
 }
 
 /// The reports folder: the app's Documents
-/// folder, which the Files app shows under On My iPhone › Job Scan.
+/// folder, which the Files app shows under On My iPhone › AngloRadar.
 public final class ReportStore: @unchecked Sendable {
     public let directory: URL
     static let fileName = Rx(#"^jobs-(\d{4}-\d{2}-\d{2})\.(html|md|txt)$"#)
