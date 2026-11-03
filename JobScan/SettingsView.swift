@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import JobScanCore
 
@@ -103,6 +104,11 @@ struct SettingsView: View {
         }
     }
 
+    /// The Files app's name for local storage: "On My iPhone" or "On My iPad".
+    static var onMyDevice: String {
+        UIDevice.current.userInterfaceIdiom == .pad ? "On My iPad" : "On My iPhone"
+    }
+
     static func postedText(_ maxAgeDays: Int) -> String {
         switch maxAgeDays {
         case ..<1: return "today"
@@ -151,7 +157,7 @@ struct SettingsView: View {
         } header: {
             Text("Files")
         } footer: {
-            Text("Reports and anglo-job-scan.log are also in the Files app, under On My iPhone › AngloRadar.")
+            Text("Reports and anglo-job-scan.log are also in the Files app, under \(Self.onMyDevice) › AngloRadar.")
         }
     }
 }

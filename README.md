@@ -22,7 +22,7 @@ pages, filters them and keeps the reports.
 - **Settings:** stored in a database on the phone, editable in the app; import and
   export as `config.toml`
 - **Files:** reports and `anglo-job-scan.log` are in the app's folder in
-  the Files app (On My iPhone › AngloRadar); the log is also under Settings › Scan log
+  the Files app (On My iPhone / On My iPad › AngloRadar); the log is also under Settings › Scan log
 
 ## Requirements
 
