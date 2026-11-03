@@ -67,6 +67,9 @@ final class AppModel {
             settings = ConfigFileSettingsStore(file: configFile)
         }
         let loaded = settings.load()
+        // After load(): on a first launch the database checks Documents for an old
+        // config.toml to import, and the example copied here must not be mistaken for one.
+        Self.copyExampleConfigOnFirstLaunch(to: documents, log: log)
         self.store = ReportStore(directory: documents)
         self.log = log
         self.settings = settings
@@ -75,6 +78,28 @@ final class AppModel {
         self.isCustomConfig = loaded.problem == nil && loaded.config.normalized() != settings.loadDefaults().config.normalized()
         self.hasSavedSettings = !settings.isEmpty
         reloadReports()
+    }
+
+    /// First launch only: puts the config.toml that comes with the app into the app's
+    /// folder in the Files app (On My iPhone › AngloRadar), as an example to edit and
+    /// import. It is not loaded into the settings. A file already there is left alone,
+    /// and a deleted copy is not put back.
+    private static func copyExampleConfigOnFirstLaunch(to documents: URL, log: ScanLog) {
+        let key = "exampleConfigCopied"
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: key) else { return }
+        defaults.set(true, forKey: key)
+        guard let bundled = Bundle.main.url(forResource: "config", withExtension: "toml") else { return }
+        let target = documents.appendingPathComponent("config.toml")
+        let fm = FileManager.default
+        guard !fm.fileExists(atPath: target.path) else { return }
+        do {
+            try fm.createDirectory(at: documents, withIntermediateDirectories: true)
+            try fm.copyItem(at: bundled, to: target)
+            log.info("Example config.toml copied to the app's folder")
+        } catch {
+            log.error("Couldn't copy the example config.toml: \(error.localizedDescription)")
+        }
     }
 
     // MARK: Header text

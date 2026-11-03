@@ -135,7 +135,7 @@ struct SettingsView: View {
         } header: {
             Text("config.toml")
         } footer: {
-            Text("Export the settings as a config.toml file to back them up, share them, or edit them elsewhere. Importing a file checks it first, then replaces the current settings.")
+            Text("Export the settings as a config.toml file to back them up, share them, or edit them elsewhere. Importing a file checks it first, then replaces the current settings. The app's folder in the Files app has an example config.toml to start from.")
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: Self.tomlTypes) { result in
             importFile(result)

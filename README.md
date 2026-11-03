@@ -74,7 +74,10 @@ Or open `JobScanCore/Package.swift` in Xcode and press ⌘U.
 The settings are stored in a **SwiftData database on the phone** (no server). A new
 install starts with an **empty** database: nothing is searched until you enter your
 settings and Save (or import a config.toml). The `config.toml` the app ships with
-(`JobScan/config.toml`) is not copied in; it is only used if the database can't be opened.
+(`JobScan/config.toml`) is not loaded into the settings; it is only used if the database
+can't be opened. On the first launch a copy of it is put in the app's folder in the Files
+app (On My iPhone / On My iPad › AngloRadar), as an example to edit and import with
+**Import config.toml**. A file already there is left alone, and a deleted copy is not put back.
 
 **In the app:** Settings › **Edit Settings**. You edit a copy: nothing changes
 until you tap **Save**, and Save stays disabled until every setting is valid
